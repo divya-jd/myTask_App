@@ -1,5 +1,15 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+
+enum SortBy { priority, dueDate, status }
+
+class Task {
+  final String name;
+  final String priority; // e.g., 'high', 'medium', 'low'
+  final DateTime dueDate;
+  final bool isCompleted;
+
+  Task({required this.name, required this.priority, required this.dueDate, required this.isCompleted});
+}
 
 class TaskListScreen extends StatefulWidget {
   @override
@@ -7,83 +17,82 @@ class TaskListScreen extends StatefulWidget {
 }
 
 class _TaskListScreenState extends State<TaskListScreen> {
-  final TextEditingController _taskController = TextEditingController();
-  final CollectionReference _tasksCollection = FirebaseFirestore.instance.collection('tasks');
-  String _selectedPriority = 'Low';
+  SortBy _sortBy = SortBy.priority;
+  List<Task> tasks = [
+    Task(name: 'Task 1', priority: 'high', dueDate: DateTime.now().add(Duration(days: 1)), isCompleted: false),
+    Task(name: 'Task 2', priority: 'medium', dueDate: DateTime.now().add(Duration(days: 3)), isCompleted: true),
+    Task(name: 'Task 3', priority: 'low', dueDate: DateTime.now().add(Duration(days: 2)), isCompleted: false),
+    // Add more tasks as needed
+  ];
 
-  Future<void> _addTask() async {
-    if (_taskController.text.isNotEmpty) {
-      await _tasksCollection.add({
-        'name': _taskController.text,
-        'completed': false,
-        'priority': _selectedPriority,
+  void _sortTasks() {
+    setState(() {
+      tasks.sort((a, b) {
+        switch (_sortBy) {
+          case SortBy.priority:
+            return _priorityValue(a.priority).compareTo(_priorityValue(b.priority));
+          case SortBy.dueDate:
+            return a.dueDate.compareTo(b.dueDate);
+          case SortBy.status:
+            return a.isCompleted == b.isCompleted
+                ? 0
+                : (a.isCompleted ? 1 : -1);
+          default:
+            return 0;
+        }
       });
-      _taskController.clear();
+    });
+  }
+
+  int _priorityValue(String priority) {
+    switch (priority) {
+      case 'high':
+        return 1;
+      case 'medium':
+        return 2;
+      case 'low':
+        return 3;
+      default:
+        return 4;
     }
-  }
-
-  Future<void> _deleteTask(String id) async {
-    await _tasksCollection.doc(id).delete();
-  }
-
-  Future<void> _toggleCompletion(String id, bool currentStatus) async {
-    await _tasksCollection.doc(id).update({'completed': !currentStatus});
-  }
-
-  Future<void> _setPriority(String id, String newPriority) async {
-    await _tasksCollection.doc(id).update({'priority': newPriority});
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Task List')),
-      body: Column(
-        children: [
-          TextField(
-            controller: _taskController,
-            decoration: InputDecoration(labelText: 'Enter Task'),
-          ),
-          DropdownButton<String>(
-            value: _selectedPriority,
-            items: ['High', 'Medium', 'Low'].map((String value) {
-              return DropdownMenuItem<String>(value: value, child: Text(value));
+      appBar: AppBar(
+        title: Text('Task List'),
+        actions: [
+          DropdownButton<SortBy>(
+            value: _sortBy,
+            items: SortBy.values.map((SortBy sort) {
+              return DropdownMenuItem<SortBy>(
+                value: sort,
+                child: Text(sort.toString().split('.').last),
+              );
             }).toList(),
-            onChanged: (String? newValue) {
-              setState(() { _selectedPriority = newValue!; });
+            onChanged: (SortBy? newSort) {
+              setState(() {
+                _sortBy = newSort!;
+              });
+              _sortTasks(); // Call the sorting function
             },
           ),
-          ElevatedButton(onPressed: _addTask, child: Text('Add Task')),
-          Expanded(
-            child: StreamBuilder(
-              stream: _tasksCollection.snapshots(),
-              builder: (context, AsyncSnapshot<QuerySnapshot> snapshot) {
-                if (!snapshot.hasData) return CircularProgressIndicator();
-                return ListView(
-                  children: snapshot.data!.docs.map((doc) {
-                    return ListTile(
-                      title: Text(doc['name']),
-                      subtitle: Text('Priority: ${doc['priority']}'),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Checkbox(
-                            value: doc['completed'],
-                            onChanged: (_) => _toggleCompletion(doc.id, doc['completed']),
-                          ),
-                          IconButton(
-                            icon: Icon(Icons.delete),
-                            onPressed: () => _deleteTask(doc.id),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                );
-              },
-            ),
-          ),
         ],
+      ),
+      body: ListView.builder(
+        itemCount: tasks.length,
+        itemBuilder: (context, index) {
+          final task = tasks[index];
+          return ListTile(
+            title: Text(task.name),
+            subtitle: Text('Priority: ${task.priority}, Due: ${task.dueDate.toLocal().toString().split(' ')[0]}'),
+            trailing: Icon(
+              task.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
+              color: task.isCompleted ? Colors.green : Colors.grey,
+            ),
+          );
+        },
       ),
     );
   }
